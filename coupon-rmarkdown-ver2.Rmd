@@ -1,0 +1,563 @@
+---
+title: "Capstone ver2"
+author: "J-Kader"
+date: "Saturday, November 07, 2015"
+output: html_document
+---
+# Ponpare Coupons
+
+Ponpare is Japanese coupon site that offers discount coupons on many activities, goods and services. The goal of the followng analysis and model is to improve Ponpare recommendation system 
+
+We have few datasets provided by the company that give us information about the users and the coupons purchased.
+
+```{r, echo=FALSE}
+user_list_en = read.csv("C:/Users/JKADER/Documents/coupons/user_list_en.csv")
+```
+
+
+## Descriptive Aspect
+
+** USERS**
+
+  >*Who are our Users? and what do we know about them?*
+
+let us have a look at the *users list* to see the distribution of the **AGE** of the users.
+
+```{r}
+str(user_list_en)
+```
+We have 22,875 observations and 7 variables including AGE, SEX ID(Gender), USER ID hash, PREF NAME (which is the name of the user's area in Japenese), en pref name (the English translation of the PREF NAME), Registered date and Withdrawal date (dates of the user registration and withdrawal from the website). 
+
+for my analysis, I will only be using Age, Sex_id, prefecture name and the User ID.
+Now, let us explore Age.
+```{r}
+hist(user_list_en$AGE, main="Age Distribution", sub="Figure 1",cex.sub=0.7, col="blue", xlab= "USERS AGE")
+
+```
+
+Figure (1) shows that the *AGE* variable has a normal distribution 
+
+```{r include=FALSE}
+require(Hmisc)
+```
+```{r}
+describe(user_list_en$AGE)
+```
+
+We have 66 different ages category, our users' age varies between 15 to 80 with a mean of 42.5 years and standard deviation of 11.84.
+
+I categorized age based on 10 years interval and called the new variable *age group* 
+
+```{r}
+attach(user_list_en)
+user_list_en$age_group[AGE<=19 & AGE>=15] = "18"
+user_list_en$age_group[AGE<=29 & AGE>=20] = "20"
+user_list_en$age_group[AGE<=39 & AGE>=30] = "30"
+user_list_en$age_group[AGE<=49 & AGE>=40] = "40"
+user_list_en$age_group[AGE<=59 & AGE>=50] = "50"
+user_list_en$age_group[AGE<=69 & AGE>=60] = "60"
+user_list_en$age_group[AGE<=79 & AGE>=70] = "70"
+user_list_en$age_group[AGE<=89 & AGE>=80] = "80"
+user_list_en$age_group=as.numeric(user_list_en$age_group)
+hist(user_list_en$age_group, main="Age Group Distribution", col="yellow",sub="Figure 2", cex.sub=0.7, xlab="Age Group")
+
+```
+
+
+By creating age groups to categorize users, I was able to determine that most users are in their 30's and 40's; 
+* 30% of users are in their 30's
+* 28% of users in their 40's and 
+* 18% of users in their 50's
+
+This could be explained by the fact that young USERS in these age groups are more net-savvy and use on-line shopping more frequently than the older less tech-savvy age groups. 
+    
+Now that we know the age, Let us explore our USERS's **GENDER**.    
+
+```{r}
+describe(user_list_en$SEX_ID)
+```
+
+The results show that we slightly have more MALE users that make up  52% of our entire users.
+
+  > *Does the gender of users change in differnt age groups? Are there more males than females in some age groups or vise versa?*
+
+Let us calculate the probabilities of **Gender** per **Age** category.
+
+```{r}
+t= table(user_list_en$SEX_ID,user_list_en$age_group)
+barplot(prop.table(t,2), legend=paste(unique(user_list_en$SEX_ID)), ylab="Probability", xlab="Group Age", main="Gender & Age Group", sub="Figure 3", cex.sub=0.7, col=c("pink","skyblue"))
+```
+
+Figure (3) shows that in the (20, 30 and 40) age groups we almost have equal gender presence, with slightly more females than males.
+
+Interestingly, the genders of users start shifting slightly in the 50's age group, with a drastic shift in the 60's age group where males make up 70% of users,  and in the 70's age group where males increase to 80% of users in this age group, this could be due to the traditional role of men in Japan. 
+
+Let us look at the **AREA** were our users come from and determine the distribution of our users based on the prefecture name.
+
+```{r}
+unique(user_list_en$en_pref_name)
+```
+
+Our users are distributed over 47 prefectures. 
+
+  > *Are our users clustered in some prefecture more than other prefecture?*
+
+```{r warning=FALSE}
+barplot(table(user_list_en$en_pref_name), name.arg=row.names(user_list_en),main ="Prefecture Distribution\n Figure 4", las=2, cex.names=0.6, space=NULL, col="blue")
+```
+
+
+Figure 4, shows the distribution of users in the 47 Prefectures where Tokyo (with 2830 = 12% of users), Kanagawa and Osaka (with 7% of users) have the most users and Tottori Prefecture where we have the least users with only 25 users. However, I have 7256 missing values, which could change this finding. 
+
+**COUPONS**
+
+Now let us look at the attributes of the product that Ponpare offers our users **The Coupons**. 
+
+Ponpare provided us with three datasets with many variables about the coupons, the first dataset is called "*coupon_detail_train_en*" which includes "Item Count" (count of coupons at each purchase), "small area" (geographical/location), "Coupon ID", "User ID", and "Purchased ID" (log of the purchase transactions). 
+
+
+```{r echo=FALSE}
+coupon_detail_train_en = read.csv("C:/Users/JKADER/Documents/coupons/coupon_detail_train_en.csv")
+```
+
+
+```{r}
+ str(coupon_detail_train_en)
+```
+
+We have 168,996 observations in this dataset based on "Purchase ID", we have 22,782 unique "Coupon ID" and 19,368 unique "User ID". 
+
+The second dataset is called *Coupon_list_train_en* which also includes many details about the coupons
+
+```{r echo=FALSE}
+coupon_list_train_en = read.csv("C:/Users/JKADER/Documents/coupons/coupon_list_train_en.csv")
+```
+
+
+```{r}
+str(coupon_list_train_en)
+```
+
+This dataset has 19,413 observations based on unique "coupon ID" with 29 variables including "large area" (geographical/location), "ken name" (another name for prefecture), "genre", "capsule name" (geographical/location),"price rate" (discount rate),"catalogue price", "discount price" (price after discount), "desp from", "disp end" ,"disp period" (dates of the dispensed coupon), "valid from", "valid end", "valid period" (coupons validity dates), "usable dates" (some coupons are usable on certain days), 
+
+
+To create a comprehensive dataset that includes all variables for Coupons, we need to merge the two datasets
+
+```{r}
+cpdtr = coupon_detail_train_en
+cpltr= coupon_list_train_en
+train <- merge(cpdtr,cpltr)
+```
+```{r}
+names(train)
+```
+
+I need to clean up some of the variables that I will exclude from our analysis. I will only include the following variables:
+
+```{r}
+train <- train[,c("COUPON_ID_hash","USER_ID_hash","en_genre","DISCOUNT_PRICE","PRICE_RATE","USABLE_DATE_MON","USABLE_DATE_TUE","USABLE_DATE_WED","USABLE_DATE_THU","USABLE_DATE_FRI","USABLE_DATE_SAT","USABLE_DATE_SUN","USABLE_DATE_HOLIDAY","USABLE_DATE_BEFORE_HOLIDAY","en_large_area", "en_ken","en_small_area","ITEM_COUNT")]
+```
+```{r}
+str(train)
+```
+
+Now let us merge the resulted dataset that contains all coupons variables with our *"users"* dataset to create a dataset that contains all users and coupons. This dataset will help us understand realtions between users and the type of coupons. 
+
+```{r}
+users <-user_list_en[,c("SEX_ID","AGE","USER_ID_hash","age_group")]
+train.2 <- merge(train, users)
+```
+
+The result of merging the previous datasets is a new dataset that has 19,368 "unique coupon ID" and 22,782 "unique users" with 21 variables. 
+
+Let us explore some of them.
+
+  >*Is there a coupon genre that is more popular than another? let us see which coupons our users purchased the most?*
+
+```{r}
+plot(train.2$en_genre, train.2$ITEM_COUNT, las=2,cex.names=0.2, cex.axis=0.7, main="Coupon Genre & Item Count", sub="Figue 5",cex.sub=0.7 )
+```
+
+We can determine from (Figure 5) that among the 13 genres we have, users puchased coupons in the "Food" genre in big counts, where some users purchased 10 or more coupons at a time, followed by "other coupons" (not clear abot what other coupons genre is), "Delivery Services", "Hotels" and "Leisure".
+
+  >*But if users buy more than 10 or 20 coupons at a time in a specific genre, does that mean that this genre the the most popular?*
+  
+ 
+```{r}
+describe(train.2$en_genre)
+```
+
+Looking at the results above we conclude that the "Food" genre is the most popular which makes up 36% of the puchased coupons, followed by "other coupons" and then "Delivery Service". 
+
+Therefore, this confirms that the "Food" genre is the most popular.
+
+  >*Do female users and male users share the same preference in genres?*
+  
+  
+```{r include=FALSE}
+require(ggplot2)
+
+```
+
+
+```{r}
+GG=ggplot(train.2, aes(x=en_genre, fill=SEX_ID)) + geom_histogram(binwidth=.5, alpha=.5, position="identity") +theme(axis.text.x = element_text(face="plain", color="#993333", size=9, angle=90))
+GG+ggtitle("Gendre & Genre")
+```
+
+
+From the figure above, we find that some genres are more popular with females than males, such as beauty salons, spas and delivery service. However, Food and hotel coupons are more popular with males.
+
+  >*Does the **Discount Rate** of the coupons matter?*
+
+Let us plot the price rate (discount rate), but before that I will recode our (Price Rate) to intervals of 5's. i will focus on price rate 30 and above, since there were very few coupons that were sold under this rate.
+
+  >*Does the different "usable day" of the coupon makes some coupons more popular?*
+  
+variables with the (usable date) consist of three values (0,1 and 2),  if we assume number(2) means certain kind of coupons with certain conditions, number (1) means usable that day and number(0) means not usable that day, we come up with the following  findings after looking at each "usable day":
+
+Coupons usability coded with number (2) were not purchased widely during the week (Mon, Tue, Wed, Thu and on holidays), but the purchase of these coupons increased on Friday and Sunday and very notably increased on Saturday and before the holiday.
+
+After looking at the frequency of Coupons usability coded with number (1), i found that the usablitiy on different days of the week does not make a significant difference on the purchase. All coupons with different usable dates were purchased similarly, except for the slight decrease on coupons "usable Saturday" which could be explained with the spike in purchases of coupons type (2) usable Saturdays
+
+Monday
+```{r echo=FALSE}
+table(train.2$USABLE_DATE_MON)
+
+```
+Tuesday
+```{r echo=FALSE}
+table(train.2$USABLE_DATE_TUE)
+```
+Friday
+```{r echo=FALSE}
+table(train.2$USABLE_DATE_FRI)
+```
+Sat
+```{r echo=FALSE}
+table(train.2$USABLE_DATE_SAT)
+```
+
+
+```{r warning=FALSE}
+attach(train.2)
+
+```
+```{r}
+train.2$Discount_Rate[PRICE_RATE<=19 & PRICE_RATE>=0]= "15"
+train.2$Discount_Rate[PRICE_RATE<=29 & PRICE_RATE>=20]= "20"
+train.2$Discount_Rate[PRICE_RATE=30]= "30"
+train.2$Discount_Rate[PRICE_RATE<=35 & PRICE_RATE>30]= "35"
+train.2$Discount_Rate[PRICE_RATE<=40 & PRICE_RATE>=36]= "40"
+train.2$Discount_Rate[PRICE_RATE<=45 & PRICE_RATE>=41]= "45"
+train.2$Discount_Rate[PRICE_RATE<=50 & PRICE_RATE>=46]= "50"
+train.2$Discount_Rate[PRICE_RATE<=55 & PRICE_RATE>=51]= "55"
+train.2$Discount_Rate[PRICE_RATE<=60 & PRICE_RATE>=56]= "60"
+train.2$Discount_Rate[PRICE_RATE<=65 & PRICE_RATE>=61]= "65"
+train.2$Discount_Rate[PRICE_RATE<=70 & PRICE_RATE>=66]= "70"
+train.2$Discount_Rate[PRICE_RATE<=75 & PRICE_RATE>=71]= "75"
+train.2$Discount_Rate[PRICE_RATE<=80 & PRICE_RATE>=76]= "80"
+train.2$Discount_Rate[PRICE_RATE<=85 & PRICE_RATE>=81]= "85"
+train.2$Discount_Rate[PRICE_RATE<=90 & PRICE_RATE>=86]= "90"
+train.2$Discount_Rate[PRICE_RATE<=95 & PRICE_RATE>=91]= "95"
+train.2$Discount_Rate[PRICE_RATE<=100 & PRICE_RATE>=96]= "100"
+
+```
+
+```{r}
+train.2$Discount_Rate=as.numeric(train.2$Discount_Rate)
+hist(train.2$Discount_Rate, main="Price Rate Distribution", col="Red", sub="Figure 6", cex.sub=0.7, xlab="Discount Rate")
+```
+
+From Figure 6, we can clearly see the popularity of the (50%) discount rate with the highest frequency, followed by discount rate (55%) and (80%) 
+
+## Inferential Aspect
+
+In the next step, I did some inferntial analysis to find the effect of explanatory variables on Price Rate, for this purpose I used a linear regression model.
+
+ >*Does the AGE or GENDER of users have an influence on their choice of the **discount rate**?*
+
+```{r include=FALSE}
+attach(train.2)
+```
+* Influence of AGE on Discount Rate
+
+```{r}
+discount.age = lm(Discount_Rate~AGE)
+summary(discount.age)
+```
+
+From the univariate regression model (discount.age) to test the effect of age on discount rate, I realize that each year increase in age causes a decrease in discount rate by 1.17, so young users seek higher discount rate.
+
+
+```{r}
+discount.age.gender = lm(Discount_Rate~AGE+SEX_ID)
+summary(discount.age.gender)
+```
+
+In this multivariate regression model we find that the effects of both sex and age are significant on discount rate (P < 0.05), which means that after controling AGE, GENDER has negative change , so our female users (reference group) seek higher discount rates than our male users. 
+
+  >*Does that mean that female users seek cheaper items, or do they just go after a good discount rate?*
+
+If we run another linear regression with the "PRICE" as the dependant variable like the following model.
+
+```{r}
+price.age.gender = lm(DISCOUNT_PRICE~AGE+SEX_ID)
+summary(price.age.gender)
+```
+
+we can infer from the results above that for each year older in age the price increases . The mean increase of the price is 14.0569 (14.1) for each year increase in age (adjusted for the sex).
+
+And interestingly, males seek cheaper items (on average 183) comparing with the price our female users seek (adjusted for the age). 
+
+I will include the Discount Rate in the model, after i test the correlation between Price Rate and Discount Rate
+```{r}
+cor(DISCOUNT_PRICE,PRICE_RATE)
+```
+The correlation is not high, therefore I can include the discount rate in the regression.
+
+```{r}
+price.age.gender.rate = lm(DISCOUNT_PRICE~AGE+SEX_ID+Discount_Rate)
+summary(price.age.gender.rate)
+```
+The effect of sex on price rate highly related to the discount rate. When I put the discount rate in the model, the regression coefficient for sex changes dramatically.
+
+But the Adjusted R-squared= 0.06169 which means that I have explained only 6 % of the variability in DISCOUNT_PRICE by these three variable. 
+
+  >*But do other variables have an effect on the purchase transaction (YES purchase = 1, NO purchase = 0) of the coupon?*
+  
+Ponpare provided us with a huge dataset *coupon visit train* that contains the viewing logs for every visit a User made during a period of time that spans from 2011-07-01 to 2012-06-23. This dataset has 2,833,180 observations with 8 variables, which makes it a very large dataset to work with. 
+
+The variable of interest in this dataset is (Purchase Flag) which records whether the user purchased a coupon (value "1") or did not purchase the coupon (value "0") for every visit.
+
+The other variables describe more details about each user's visit to the website "I DATE" (date of the visit), "PAGE SERIAL", "REFERRER hash", "COUPON ID hash","USER ID hash", "SESSION ID hash","PURCHASEID hash" (record of the purchase transaction).I will not use these variables in my analysis.
+
+To create a more manageable dataset, I substracted a smaller dataset from the *coupon visit train*, I subset it based on a period of a week (May 13,2013 to 19,2013), then I merged the week dataset with the other dataset (which contains all variables of coupons and users), I did the merge based on the unique (coupon ID hash).
+
+```{r echo=FALSE}
+train.W1 = read.csv("C:/Users/JKADER/Documents/coupons/train.W1.csv")
+```
+```{r}
+str(train.W1)
+```
+
+Now that we have a variable with a binary value, let us run a logistic regression to see if our variables have an effect on this response variable.
+
+We will start with *GENDER*.
+
+```{r}
+log.gender=glm(PURCHASE_FLG~SEX_ID, train.W1, family="binomial")
+summary(log.gender)
+```
+
+
+We can see that the slope for sex is negative (female is the reference group), meaning that the probability of event (PURCHASE_FLG) is higher for females.
+
+Now let us test for *AGE*
+
+```{r}
+log.age=glm(PURCHASE_FLG~AGE, train.W1, family="binomial")
+summary(log.age)
+```
+
+The p value is not significant so the probability of PURCHASE FLG does not relate to the age of users.
+
+## BUILDING A MODEL FOR CLUSTERING
+
+### Creating a sample
+
+To prepare a smaller sample that is representative of the users, I opted to base the sample on the top 100 users.
+
+I created a new variable based on the "frequency" of the user and picked the highest 100 users
+
+```{r include=FALSE}
+require(plyr)
+```
+```{r }
+y = count(train.2, "USER_ID_hash")
+```
+
+```{r }
+train.3 = merge(train.2, y)
+train.4 = train.3[order(train.3$freq),]
+train.5 = subset(train.4, !duplicated(train.4$USER_ID_hash))
+```
+```{r}
+sample.1=tail(train.5,100)
+```
+
+Now that we have the frequency of the users as a variable, let us test if 'Gender' and 'Age' have an effect on determining the frequncy of a user
+
+
+```{r}
+reg.freq=lm(freq~AGE + SEX_ID, sample.1)
+summary(reg.freq)
+```
+
+From the result of the regression we can see that male users are more frequent users than females with 1.35 males to 1 females after controling the age. 
+
+```{r echo=FALSE}
+sample.2 = sample.1
+sample.2[is.na(sample.2)]<- 1
+```
+```{r}
+sample.3 = sample.2[,-c(1,2,5,17,21)]
+```
+
+```{r}
+y.2=y[order(y$freq),]
+freq.user=tail(y.2,100)
+sample.6=merge(freq.user, train.2)
+```
+To prepare the sample for clustering, I excluded the User Id, Coupon Id. I also used only one variable "en ken" that contains geographical location informaion, which I find suffiecient to provide the location of our users. Therefore, I excluded the rest of the geographical location variables "large area" and "small area" to avoid increasing the dimensionality of the dataset 
+
+```{r}
+sample.7=sample.6[,c(4,5,6,7,8,9,10,11,12,13,14,15,17,20,22)]
+```
+
+We have NA's in the "Usable Days" variable especially in the "Service Delivery Genre", so it is safe to assume that the value of the "usable days" could be "1" since it is a delivery service and it should be usable any day of the week.
+
+```{r}
+sample.8 = sample.7
+sample.8[is.na(sample.8)]<-1
+```
+We have 13 levels in the "genre" variables. Looking at them closely we can recode some of them to minimize the levels for easier analysis. 
+
+```{r include=FALSE}
+require(car)
+```
+
+```{r}
+attach(sample.8)
+en_genre_recode = recode(en_genre, "c('Beauty', 'Nail and eye salon') = 'Beauty';c('Delivery service')='Delivery service';c('Food')='Food';c('Lesson','Health and medical','Other coupon')='Other coupon';c('Spa','Relaxation')='Spa Relaxation';c('Hotel and Japenese hotel')='Hotel and Japenese hotel';c('Leisure')='Leisure';c('Hair salon')='Hair salon'")
+sample.9=cbind(sample.8, en_genre_recode)
+```
+```{r}
+sample.10=sample.9
+sample.10$en_genre = NULL
+```
+I included "Beauty" and "Nail and eye salon" under the same genre "Beauty". Considering the low number of coupons in the "lesson", "health and medical" I included both genres under the genre "other coupon", I also included "spa" and "relaxation" under one genre "spa relaxation".
+
+Now we have only 9 genres.
+
+```{r}
+unique(sample.10$en_genre_recode)
+```
+
+I decided to exclude the 9 variables that indicate the "usable date" for two reasons:
+
+1. The results of my descriptive analysis showed that there is no signifigant variance in the amount of purchased coupons among the differnt usable dates. There was a very slight differnce and I consequently determined that the "usable dates" were not big factors that influence the purchase of the coupons
+
+2. These variables contain values of "0, 1 and 2". There was no explanation provided by the company as to what value "2"  means in this context, I assumed it means a coupon with special terms. Taking into consideration this lack of information, the results of any model will be hard to interpret properly.
+
+```{r}
+sample.11 = sample.10[,-c(3:11)]
+```
+
+### Clustering
+
+We will create clusters based on the follwing variables:
+
+```{r}
+names(sample.11)
+```
+
+
+Since our dataset includes categorical and numeric variables we need to assign dummy variables to the factor
+
+```{r}
+sample.11[,"dummy"]=1
+sample.12=as.data.frame(model.matrix(dummy~.,sample.11))
+sample.12[,1]=NULL
+```
+
+Now I will split the dataset to 70%  for "training" and the remaining for "test".
+
+```{r}
+rn_train <- sample(nrow(sample.12),floor(nrow(sample.12)*0.7))
+sample.12.train<-sample.12[rn_train,]
+sample.12.test<-sample.12[-rn_train,]
+```
+### Hierarchical Clustering
+
+```{r include=FALSE}
+require(flexclust)
+```
+Now that our dataset is ready, let us compute the distance between all data points using the "euclidean" distance
+
+```{r}
+distances = dist(sample.12.train, method="euclidean")
+```
+Now we will use the hierarchial clustering using method "ward.D" which cares about he distances between clusters using centroid distance and also the variance in each of the clusters.
+
+```{r}
+clustersample.12 = hclust(distances, method = "ward.D")
+```
+let us have a look at the dendrogram to help us pick the number of clusters.
+
+```{r}
+plot(clustersample.12)
+```
+
+I will use 10 clusters, considering i have 100 unique users (10^2 = 100) 
+
+```{r}
+hc.group = cutree(clustersample.12, k=10)
+```
+now let us explore our clusters.
+ 
+```{r}
+cluster.1 = subset(sample.12.train, hc.group==1)
+```
+Price mean = 878.12
+Age group = mean = 41 (mostly in 50's)
+Area= most user are from Tokyo =49%, Osaka = 20% , 5% kenfukuoka 
+Gender = female and male are balanced in this cluster
+Genre = Food (72%) , 7% gift card,8% delivery service, 4% leisure
+
+```{r}
+cluster.2 = subset(sample.12.train, hc.group==2)
+```
+Price mean = 4000
+Age Group = mostly in their 50s and 30's
+Area =  Tokoy 65%, Oska = 14%
+Gender = more female than males
+Genre = Food 48%, Spa 16%, Hair = 7%
+
+### K-Mean Clustering
+
+Using the Kmean, I created 7 cluster
+
+```{r}
+KMC = kmeans(sample.12.train, centers=7, iter.max=1000)
+```
+
+In the ("felxclust") package we have the object class KCCA (K-Centroids Cluster Analysis). We need to convert the information from the clustering algorithim to an object of the class KCCA, this is needed before using the "predict" function on th test set
+
+```{r}
+KMC.kcca = as.kcca(KMC,sample.12.train)
+user.clustors = predict(KMC.kcca, newdata=sample.12.test)
+```
+Now We will add the clusters as a column to our train and test.
+
+```{r}
+train.validation = cbind(sample.12.train, KMC$cluster)
+test.validation = cbind(sample.12.test, user.clustors)
+```
+Let us explore our K-MEAN clusterS
+
+```{r}
+kmcluster.1 = train.validation[KMC$cluster==1,]
+```
+
+```{r}
+View(train.validation[KMC$cluster==1,])
+```
+Cluster 1
+
+Discount rate = mostly 50%
+Price = mean 430 
+Age = mostly in the 40 and 50 
+Area = Tokyo 69% , Osaka 14%
+Genre = Food 74%, other 14% 
+Gender = slightly more males
